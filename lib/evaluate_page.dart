@@ -1,5 +1,6 @@
-import 'package:f_alzheimer_app/main.dart';
 import 'package:flutter/material.dart';
+import 'dart:convert'; // 用來轉 JSON
+import 'package:http/http.dart' as http; // 用來發送請求
 
 
 // =======================
@@ -21,9 +22,12 @@ class AssessmentResult {
   // Behavioral Problems
   int behaviorScore = 0; // 0 or 1
 
+  //Functional Assessment
+  int functionScore = 0;// 1 ~ 10
+
   @override
   String toString() {
-    return 'Memory Complaints(記憶抱怨): $memoryScore\nADL日常生活活動量表: $adlScore\nSleep Quality(睡眠品質): $sleepScore\nMMSE(簡易心智量表): $mmseScore\nBehavioralProblems(行為問題): $behaviorScore';
+    return 'Memory Complaints(記憶抱怨): $memoryScore\nADL日常生活活動量表: $adlScore\nSleep Quality(睡眠品質): $sleepScore\nMMSE(簡易心智量表): $mmseScore\nBehavioralProblems(行為問題): $behaviorScore\nFunctional Assessment(整體功能評分): $functionScore';
   }
 }
 
@@ -42,7 +46,7 @@ class AssessmentStartPage extends StatelessWidget {
           children: [
             const Icon(Icons.assignment_ind, size: 80, color: Colors.blue),
             const SizedBox(height: 20),
-            const Text("請依序回答接下來的 5 份問卷", style: TextStyle(fontSize: 18)),
+            const Text("請依序回答接下來的 6 份問卷", style: TextStyle(fontSize: 18)),
             const SizedBox(height: 40),
             ElevatedButton(
               onPressed: () {
@@ -77,7 +81,7 @@ class _AssessmentFlowPageState extends State<AssessmentFlowPage> {
   final PageController _controller = PageController();
   final AssessmentResult _result = AssessmentResult();
   int _currentPage = 0;
-  final int _totalPages = 5;
+  final int _totalPages = 6;
 
   void _nextPage() {
     if (_currentPage < _totalPages - 1) {
@@ -91,23 +95,193 @@ class _AssessmentFlowPageState extends State<AssessmentFlowPage> {
     }
   }
 
-  void _submitResults() {
-    // 這裡處理最終送出邏輯 (例如傳送到 API)
+  // async 方法，因為網路請求是異步的
+  Future<void> _submitResults() async {
+    // 1. 顯示載入中的轉圈圈
     showDialog(
       context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    // 2. 打包數據
+    // 要看 API 的欄位名稱
+    final Map<String, dynamic> requestData = {
+      "Age":60,
+      "BMI":22.5,
+
+      "MemoryComplaints": _result.memoryScore,
+      "ADL": _result.adlScore / 10,
+      "SleepQuality": _result.sleepScore,
+      "MMSE": _result.mmseScore,
+      "BehavioralProblems": _result.behaviorScore,
+      "FunctionalAssessment": _result.functionScore
+    };
+
+    //API 指定要放在 "data" 裡面
+    final Map<String, dynamic> requestBody = {
+      "data": requestData
+    };
+
+    try {
+      // 3. 發送 API 請求
+      final Uri url = Uri.parse("http://himhealth.mcu.edu.tw:8048/v1/predict");
+
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(requestBody), // 將 Map 轉為 JSON 字串
+      );
+
+      // 關閉載入中的轉圈圈
+      if (mounted) Navigator.pop(context);
+
+      // 4. 檢查伺服器回應
+      if (response.statusCode == 200 || response.statusCode == 201) {
+
+        // 1. 解碼 JSON
+        final responseData = jsonDecode(response.body);
+
+        // 2. 讀取關鍵數據
+        // 注意：根據您的 Log，欄位名稱是 'prediction' 和 'risk_probability'
+        int prediction = responseData['prediction'];
+        double probability = responseData['risk_probability'];
+
+        print("解析成功 - 結果: $prediction, 機率: $probability");
+
+        // 3. 呼叫彈出視窗，把這兩個數字傳進去
+        _showSuccessDialog(prediction, probability);
+
+      } else {
+
+        print("上傳失敗，狀態碼: ${response.statusCode}");
+        print("伺服器回應錯誤訊息: ${response.body}");
+
+        _showErrorSnackBar("上傳失敗: ${response.statusCode}");
+      }
+    } catch (e) {
+      // 關閉載入中
+      if (mounted) Navigator.pop(context);
+      // 網路連線異常
+      _showErrorSnackBar("連線錯誤：$e");
+    }
+  }
+
+  // 顯示結果(接收預測結果和機率)
+  void _showSuccessDialog(int prediction, double probability) {
+
+    // 1. 判斷邏輯：如果是 1 就是高風險
+    bool isHighRisk = (prediction == 1);
+
+    // 2. 設定顏色與文字
+    // 高風險用紅色，低風險用綠色
+    Color themeColor = isHighRisk ? Colors.red : Colors.green;
+    String titleText = isHighRisk ? "風險預警" : "評估完成";
+    IconData titleIcon = isHighRisk ? Icons.warning_amber_rounded : Icons.check_circle_outline;
+
+    String messageText = isHighRisk
+        ? "模型分析顯示您可能有潛在的阿茲海默症風險。\n建議您儘速前往神經內科或精神科進行詳細檢查。"
+        : "模型分析顯示目前的風險較低。\n請繼續保持良好的生活習慣與運動！";
+
+    // 3. 把機率變成百分比
+    String probString = "${(probability * 100).toStringAsFixed(1)}%";
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: const Text("評估完成"),
-        content: Text("您的評估結果如下：\n\n${_result.toString()}"),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        // 標題區
+        title: Row(
+          children: [
+            Icon(titleIcon, color: themeColor, size: 28),
+            const SizedBox(width: 10),
+            Text(
+              titleText,
+              style: TextStyle(color: themeColor, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        // 內容區
+        content: SingleChildScrollView(
+          child: ListBody(
+            children: [
+              // --- 顯示機率的大框框 ---
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 10),
+                decoration: BoxDecoration(
+                  color: themeColor.withOpacity(0.1), // 淺色背景
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: themeColor.withOpacity(0.5)),
+                ),
+                child: Column(
+                  children: [
+                    Text("預測患病機率", style: TextStyle(color: themeColor, fontSize: 14)),
+                    const SizedBox(height: 5),
+                    Text(
+                      probString,
+                      style: TextStyle(
+                          color: themeColor,
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // --- 建議文字 ---
+              Text(messageText, style: const TextStyle(fontSize: 16, height: 1.5)),
+              const Divider(height: 30, thickness: 1),
+
+              // --- 原始分數列表 (讓使用者核對) ---
+              const Text("本次評估數據：", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              _buildScoreRow("MMSE (心智量表)", "${_result.mmseScore}"),
+              _buildScoreRow("ADL (生活功能)", "${_result.adlScore}"), // 顯示原始分數
+              _buildScoreRow("功能評估", "${_result.functionScore}"),
+              _buildScoreRow("記憶抱怨", "${_result.memoryScore}"),
+              _buildScoreRow("睡眠品質", "${_result.sleepScore}"),
+              _buildScoreRow("行為問題", "${_result.behaviorScore}"),
+            ],
+          ),
+        ),
+        // 按鈕區
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.pop(ctx); // Close dialog
-
-              Navigator.pop(context);
+              Navigator.of(ctx).pop(); // 關閉 Dialog
+              Navigator.of(context).pop(); // 回到首頁
             },
-            child: const Text("回評估首頁"),
-          )
+            child: const Text("完成，回到首頁", style: TextStyle(fontSize: 16)),
+          ),
         ],
+      ),
+    );
+  }
+
+  // 小工具：用來排版每一行分數
+  Widget _buildScoreRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 14, color: Colors.black87)),
+          Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+
+  // 顯示錯誤的輔助方法
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
       ),
     );
   }
@@ -143,6 +317,10 @@ class _AssessmentFlowPageState extends State<AssessmentFlowPage> {
                 ),
                 BehavioralProblemsForm(
                   onSaved: (val) => _result.behaviorScore = val,
+                  onSubmit: _nextPage,
+                ),
+                FunctionalAssessmentForm(
+                  onSaved: (val) => _result.functionScore = val,
                   onSubmit: _submitResults, // 最後一份直接送出
                 ),
               ],
@@ -246,7 +424,7 @@ class ADLForm extends StatefulWidget {
 }
 
 class _ADLFormState extends State<ADLForm> {
-  // 這裡建立了詳細的題目資料結構，包含每個分數對應的描述
+
   final List<Map<String, dynamic>> questions = [
     {
       "title": "1.進食",
@@ -283,7 +461,7 @@ class _ADLFormState extends State<ADLForm> {
       "options": [
         {"score": 10, "text": "不會失禁，若需使用塞劑可自行完成。"},
         {"score": 5, "text": "偶爾會失禁(每週不超過一次)，或使用塞劑時需協助。"},
-        {"score": 0, "text": "完全依賴。"}
+        {"score": 0, "text": "完全失禁或需完全協助。"}
       ]
     },
     {
@@ -291,7 +469,7 @@ class _ADLFormState extends State<ADLForm> {
       "options": [
         {"score": 10, "text": "日夜皆不會尿失禁，或可自行處理尿套/尿布。"},
         {"score": 5, "text": "偶爾會尿失禁(每週不超過一次)或尿急(無法等待便盆或無法及時趕到廁所)或需別人幫忙處理尿套。"},
-        {"score": 0, "text": "完全依賴。"}
+        {"score": 0, "text": "完全失禁或需完全協助。"}
       ]
     },
     {
@@ -509,26 +687,82 @@ class MMSEForm extends StatefulWidget {
 
 class _MMSEFormState extends State<MMSEForm> {
 
-  final Map<String, int> maxScores = {
-    "定向感 (時間)": 5, //
-    "定向感 (地方)": 5, //
-    "注意力 (訊息登錄)": 3, //
-    "注意力 (計算/減七)": 5, //
-    "記憶力 (回憶)": 3, //
-    "語言 (命名)": 2, //
-    "語言 (複誦)": 1, //
-    "語言 (理解)": 3, // [cite: 27]
-    "語言 (閱讀)": 1, // [cite: 27]
-    "語言 (書寫)": 1, // [cite: 27]
-    "建構力 (繪圖)": 1, // [cite: 27]
-  };//MMSE題目
+  final List<Map<String, dynamic>> questions = [
+    {
+      "title": "1. 定向感 (時間)",
+      "maxScore": 5,
+      "description": "請詢問個案：\n「今年是幾年？現在是幾月？今天是幾號？星期幾？現在是什麼季節？」",
+      "hint": "每答對一項得 1 分，共 5 分"
+    },
+    {
+      "title": "2. 定向感 (地方)",
+      "maxScore": 5,
+      "description": "請詢問個案：\n「我們現在在哪個縣市？在哪家醫院(或診所)？什麼科別(或病房)？在第幾樓？這裡是哪裡(如診間)？」",
+      "hint": "每答對一項得 1 分，共 5 分"
+    },
+    {
+      "title": "3. 訊息登錄 (記憶)",
+      "maxScore": 3,
+      "description": "請清楚唸出三個名詞（如：皮球、國旗、樹木），每秒唸一個。\n唸完後請個案複誦一次，並請他記住，稍後會再問。",
+      "hint": "個案能說出一個得 1 分，共 3 分 (第一次嘗試的結果)"
+    },
+    {
+      "title": "4. 注意力與計算",
+      "maxScore": 5,
+      "description": "請個案從 100 開始連續減 7。\n(93、86、79、72、65)\n\n※若個案無法計算，可改請他倒著唸「台南火車站」(站車火南台)。",
+      "hint": "每減對一次(或倒唸對一個字)得 1 分，共 5 分"
+    },
+    {
+      "title": "5. 回憶 (記憶力)",
+      "maxScore": 3,
+      "description": "請個案說出剛剛要他記住的那三個名詞是什麼？",
+      "hint": "每答對一個得 1 分，共 3 分"
+    },
+    {
+      "title": "6. 語言 (命名)",
+      "maxScore": 2,
+      "description": "拿出「手錶」和「原子筆」，分別問個案這是什麼？",
+      "hint": "每答對一個得 1 分，共 2 分"
+    },
+    {
+      "title": "7. 語言 (複誦)",
+      "maxScore": 1,
+      "description": "請個案跟著唸一遍：\n「白紙真正寫黑字」或「有錢能使鬼推磨」。",
+      "hint": "唸對得 1 分"
+    },
+    {
+      "title": "8. 語言 (口語理解)",
+      "maxScore": 3,
+      "description": "給個案一張白紙，發出指令(一次講完)：\n「用你的右手拿紙，將紙對摺，然後放在大腿上(或地上)」。",
+      "hint": "每做對一個動作得 1 分，共 3 分"
+    },
+    {
+      "title": "9. 語言 (閱讀理解)",
+      "maxScore": 1,
+      "description": "出示寫有「閉上眼睛」的紙卡。\n請個案讀出來，並照著做。",
+      "hint": "個案能閉上眼睛得 1 分"
+    },
+    {
+      "title": "10. 語言 (書寫造句)",
+      "maxScore": 1,
+      "description": "請個案在紙上寫一個完整的句子。\n(需包含主詞與動詞，且有意義)",
+      "hint": "寫出完整句子得 1 分"
+    },
+    {
+      "title": "11. 建構力 (繪圖)",
+      "maxScore": 1,
+      "description": "請個案照著樣子畫出圖形：\n(兩個交疊的五角形，交疊處需形成一個四邊形)",
+      "hint": "圖形正確得 1 分"
+    },
+  ];//MMSE題目
 
-  late Map<String, int> currentScores;
+  late List<int> currentScores;
 
   @override
   void initState() {
     super.initState();
-    currentScores = {for (var k in maxScores.keys) k: 0};
+    // 初始化分數列表，預設都是 0 分
+    currentScores = List.filled(questions.length, 0);
   }
 
   @override
@@ -539,43 +773,125 @@ class _MMSEFormState extends State<MMSEForm> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text("MMSE 簡易心智量表", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          const Text("請輸入各測驗項目的得分", style: TextStyle(color: Colors.grey, fontSize: 16)),
-          const Divider(),
-          ...maxScores.entries.map((entry) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(child: Text(entry.key, style: const TextStyle(fontSize: 16))),
-                  DropdownButton<int>(
-                    value: currentScores[entry.key],
-                    items: List.generate(entry.value + 1, (i) {
-                      return DropdownMenuItem(value: i, child: Text("$i 分"));
-                    }),
-                    onChanged: (val) {
-                      setState(() {
-                        currentScores[entry.key] = val!;
-                      });
-                    },
-                  ),
-                  Text("/ ${entry.value} 分")
-                ],
+          const SizedBox(height: 5),
+          const Text("請依據指導語進行測驗，並記錄得分", style: TextStyle(color: Colors.grey, fontSize: 16)),
+          const Divider(thickness: 2),
+
+          ...List.generate(questions.length, (index) {
+            var q = questions[index];
+            int max = q['maxScore'];
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 15),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 標題與最高分
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(q['title'], style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                        Text("滿分: $max 分", style: const TextStyle(color: Colors.grey)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    // 題目敘述 (背景色塊強調)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        q['description'],
+                        style: const TextStyle(fontSize: 16, height: 1.5),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // 分數選擇器
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            q['hint'],
+                            style: const TextStyle(color: Colors.grey, fontSize: 13),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const Text("得分：", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 10),
+                        DropdownButton<int>(
+                          value: currentScores[index],
+                          elevation: 16,
+                          style: const TextStyle(color: Colors.blue, fontSize: 18),
+                          underline: Container(
+                            height: 2,
+                            color: Colors.blueAccent,
+                          ),
+                          onChanged: (int? newValue) {
+                            setState(() {
+                              currentScores[index] = newValue!;
+                            });
+                          },
+                          items: List.generate(max + 1, (i) {
+                            return DropdownMenuItem<int>(
+                              value: i,
+                              child: Text("$i"),
+                            );
+                          }),
+                        ),
+                        const SizedBox(width: 10),
+                        const Text("分", style: TextStyle(fontSize: 16)),
+                      ],
+                    )
+                  ],
+                ),
               ),
             );
           }),
+
           const SizedBox(height: 20),
+
+          // 顯示目前總分
+          Container(
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+                color: Colors.orange.shade100,
+                borderRadius: BorderRadius.circular(10)
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text("目前總分：", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(
+                    "${currentScores.reduce((a, b) => a + b)} / 30",
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.deepOrange)
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () {
-                int total = currentScores.values.reduce((a, b) => a + b);
+                int total = currentScores.reduce((a, b) => a + b);
                 widget.onSaved(total);
                 widget.onNext();
               },
-              child: const Text("完成MMSE評估 下一頁"),
+              child: const Text("完成 MMSE 評估，下一頁"),
             ),
-          )
+          ),
+          const SizedBox(height: 40),
         ],
       ),
     );
@@ -658,5 +974,137 @@ class _BehavioralProblemsFormState extends State<BehavioralProblemsForm> {
       ),
     );
   }//Behavioral Problems
+
+}
+
+
+// --- F. Functional Assessment (整體功能評分) ---
+class FunctionalAssessmentForm extends StatefulWidget {
+  final Function(int) onSaved;
+  final VoidCallback onSubmit; // 這是最後一關，所以用 Submit
+
+  const FunctionalAssessmentForm({super.key, required this.onSaved, required this.onSubmit});
+
+  @override
+  State<FunctionalAssessmentForm> createState() => _FunctionalAssessmentFormState();
+}
+
+class _FunctionalAssessmentFormState extends State<FunctionalAssessmentForm> {
+  // 預設 10 分
+  double _currentValue = 10;
+
+  final Map<int, String> _descriptions = {
+    10: "功能完全正常，生活與社交無限制 (正常老化)",
+    9: "極輕微功能下降，僅在複雜活動出現困難 (非常早期)",
+    8: "輕度功能障礙，IADL 有明顯退化 (輕度 AD)",
+    7: "需提醒才能完成部分日常活動",
+    6: "IADL 大多需協助，基本 ADL 尚可",
+    5: "基本 ADL 開始受影響，需部分協助",
+    4: "多數日常活動需他人協助",
+    3: "嚴重功能障礙，僅能完成簡單活動",
+    2: "幾乎完全依賴照顧者",
+    1: "極重度功能障礙，無法自理生活",
+    0: "極重度功能障礙，無法自理生活", // 0 與 1 共用描述
+  };//function題目
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Functional Assessment 整體功能評分", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          const Text("請拖動滑桿，選擇最符合個案目前的整體功能狀態：", style: TextStyle(color: Colors.grey, fontSize: 16)),
+          const Divider(),
+          const SizedBox(height: 20),
+
+          // 顯示目前分數與描述
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: Colors.blue.shade200)
+            ),
+            child: Column(
+              children: [
+                Text(
+                  "${_currentValue.toInt()} 分",
+                  style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Colors.blue),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  _descriptions[_currentValue.toInt()] ?? "",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 30),
+
+          // 滑動條 (Slider)
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 10.0,
+              activeTrackColor: Colors.blueAccent,
+              inactiveTrackColor: Colors.blue.shade100,
+              thumbColor: Colors.blue,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 15.0),
+              overlayColor: Colors.blue.withAlpha(32),
+              valueIndicatorTextStyle: const TextStyle(color: Colors.white),
+            ),
+            child: Slider(
+              value: _currentValue,
+              min: 0,
+              max: 10,
+              divisions: 10, // 切成 10 格
+              label: _currentValue.toInt().toString(),
+              onChanged: (double value) {
+                setState(() {
+                  _currentValue = value;
+                });
+              },
+            ),
+          ),
+
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("0分 (極重度)", style: TextStyle(color: Colors.grey)),
+                Text("10分 (正常)", style: TextStyle(color: Colors.grey)),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 50),
+
+          // 送出按鈕
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green, // 綠色代表最後送出
+                  padding: const EdgeInsets.symmetric(vertical: 15)
+              ),
+              onPressed: () {
+                widget.onSaved(_currentValue.toInt());
+                widget.onSubmit(); // 觸發送出結果
+              },
+              child: const Text(
+                  "送出評估結果",
+                  style: TextStyle(color: Colors.white, fontSize: 18)
+              ),
+            ),
+          )
+        ],
+      ),
+    );
+  }//function
 
 }
