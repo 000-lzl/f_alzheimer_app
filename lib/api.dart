@@ -4,13 +4,15 @@ import 'package:flutter/foundation.dart'; // for kDebugMode
 class ApiService {
   static const String baseUrl = 'http://himhealth.mcu.edu.tw:8048';
 
-  // 模擬開關：true = 用假資料，false = 打真實後端
+
   final bool useMock;
 
   late final Dio _dio;
   String? _token;
 
-  ApiService({this.useMock = true}) {  // 預設用模擬模式
+  ApiService({this.useMock = false}) {
+    // 預設用模擬模式
+    // 模擬開關：true = 用假資料，false = 打真實後端
     _dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: 30),
@@ -31,31 +33,35 @@ class ApiService {
     _token = token;
   }
 
+  // 登入：POST /auth/login
   Future<Map<String, dynamic>> login(String account, String password) async {
     if (useMock) {
-      await Future.delayed(const Duration(seconds: 1)); // 模擬網路延遲
-      print('【模擬】登入成功：$account');
+      await Future.delayed(const Duration(seconds: 1));
       return {
-        'id': 1001,
         'account': account,
         'name': '測試使用者',
         'birthday': '2000-01-01',
         'height': 170.0,
         'weight': 60.0,
-        'token': 'mock-jwt-token-${DateTime.now().millisecondsSinceEpoch}',
+        'token': 'mock-jwt-token-xxx',
       };
     }
 
-    // 真實 API
-    final response = await _dio.post('/auth/login', data: {
-      'account': account,
-      'password': password,
-    });
-    final data = response.data as Map<String, dynamic>;
-    _token = data['token'] as String?;
-    return data['user'] as Map<String, dynamic>;
+    try {
+      final response = await _dio.post('/auth/login', data: {
+        'account': account,
+        'password': password,
+      });
+      final data = response.data as Map<String, dynamic>;
+      //_token = data['token'] as String?;
+      return data;  // 假設回傳包含 user 與 token
+    } on DioException catch (e) {
+      print('登入失敗：${e.response?.statusCode} - ${e.response?.data}');
+      rethrow;
+    }
   }
 
+  // 註冊：POST /auth/register
   Future<Map<String, dynamic>> register({
     required String account,
     required String password,
@@ -66,38 +72,40 @@ class ApiService {
   }) async {
     if (useMock) {
       await Future.delayed(const Duration(seconds: 1));
-      print('【模擬】註冊成功：$name ($account)');
       return {
-        'id': 1002,
         'account': account,
         'name': name,
         'birthday': birthday,
         'height': height,
         'weight': weight,
-        'token': 'mock-jwt-token-${DateTime.now().millisecondsSinceEpoch}',
+        'token': 'mock-jwt-token-xxx',
       };
     }
 
-    // 真實 API
-    final response = await _dio.post('/auth/register', data: {
-      'account': account,
-      'password': password,
-      'name': name,
-      'birthday': birthday,
-      'height': height,
-      'weight': weight,
-    });
-    final data = response.data as Map<String, dynamic>;
-    _token = data['token'] as String?;
-    return data['user'] as Map<String, dynamic>;
+    try {
+      final response = await _dio.post('/auth/register', data: {
+        'account': account,
+        'password': password,
+        'name': name,
+        'birthday': birthday,
+        'height': height,
+        'weight': weight,
+      });
+
+      final data = response.data as Map<String, dynamic>;
+
+      return data;
+    } on DioException catch (e) {
+      print('註冊失敗：${e.response?.statusCode} - ${e.response?.data}');
+      rethrow;
+    }
   }
 
+  // 取得個人資料：改成 POST /users/me（後端是 POST！）
   Future<Map<String, dynamic>> getProfile() async {
     if (useMock) {
       await Future.delayed(const Duration(milliseconds: 800));
-      print('【模擬】取得個人資料');
       return {
-        'id': 1001,
         'account': 'test123',
         'name': '測試使用者',
         'birthday': '2000-01-01',
@@ -106,125 +114,41 @@ class ApiService {
       };
     }
 
-    // 真實 API（自動帶 token）
-    final response = await _dio.get('/users/me');
-    return response.data as Map<String, dynamic>;
+    try {
+      final response = await _dio.post('/users/me');  // ← 改成 POST
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      print('取得個人資料失敗：${e.response?.statusCode} - ${e.response?.data}');
+      if (e.response?.statusCode == 405) {
+        print('警告：後端 /users/me 只允許 POST 方法，但你用了 GET');
+      }
+      rethrow;
+    }
   }
+
+  // 遊戲歷史紀錄：POST /games/history（後端是 POST）
+  Future<List<Map<String, dynamic>>> getGameHistory(String gameType) async {
+    if (useMock) {
+      await Future.delayed(const Duration(milliseconds: 800));
+      return List.generate(5, (i) => {
+        'score': 80 + i * 5,
+        'seconds': 120 - i * 10,
+        'level': 3 + i,
+        'playedAt': DateTime.now().subtract(Duration(days: i)).toIso8601String(),
+      });
+    }
+
+    try {
+      final response = await _dio.post('/games/history', data: {
+        'gameType': gameType,
+      });
+      return List<Map<String, dynamic>>.from(response.data);
+    } on DioException catch (e) {
+      print('取得遊戲歷史失敗：${e.response?.statusCode} - ${e.response?.data}');
+      rethrow;
+    }
+  }
+}
 
 // 未來其他 API 方法也可以用同樣方式加模擬
-}
 
-/*
-class ApiService {
-  static const String baseUrl = 'http://himhealth.mcu.edu.tw:8048/v1/predict';
-  late final Dio _dio;
-  String? _token;
-
-  ApiService() {
-    _dio = Dio(BaseOptions(
-      baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-      headers: {'Content-Type': 'application/json'},
-    ));
-
-    // 全局攔截器（加 token、處理錯誤）
-    _dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) {
-        if (_token != null) {
-          options.headers['Authorization'] = 'Bearer $_token';
-        }
-        if (kDebugMode) {
-          print('→ ${options.method} ${options.uri}');
-        }
-        return handler.next(options);
-      },
-      onResponse: (response, handler) {
-        if (kDebugMode) {
-          print('← ${response.statusCode} ${response.realUri}');
-        }
-        return handler.next(response);
-      },
-      onError: (DioException e, handler) {
-        // 這裡可以統一處理 401 → 登出、403 → 權限錯誤 等
-        String msg = e.response?.data?['message'] ?? e.message ?? '網路錯誤';
-        if (e.response?.statusCode == 401) {
-          // 可觸發登出邏輯
-        }
-        return handler.next(e);
-      },
-    ));
-  }
-
-  void setToken(String? token) => _token = token;
-
-  // ────────────── Auth ──────────────
-  Future<Map<String, dynamic>> login(String account, String password) async {
-    final response = await _dio.post('/auth/login', data: {
-      'account': account,
-      'password': password,
-    });
-    final data = response.data as Map<String, dynamic>;
-    _token = data['token'] as String?;
-    return data['user'] as Map<String, dynamic>;
-  }
-
-  Future<Map<String, dynamic>> register({
-    required String account,
-    required String password,
-    required String name,
-    required String birthday, // yyyy-MM-dd
-    required double height,
-    required double weight,
-  }) async {
-    final response = await _dio.post('/auth/register', data: {
-      'account': account,
-      'password': password,
-      'name': name,
-      'birthday': birthday,
-      'height': height,
-      'weight': weight,
-    });
-    final data = response.data as Map<String, dynamic>;
-    _token = data['token'] as String?;
-    return data['user'] as Map<String, dynamic>;
-  }
-
-  // ────────────── Profile ──────────────
-  Future<Map<String, dynamic>> getProfile() async {
-    final response = await _dio.get('/users/me'); // 或 /profile
-    return response.data as Map<String, dynamic>;
-  }
-
-  Future<void> updateProfile(Map<String, dynamic> updates) async {
-    await _dio.put('/users/me', data: updates);
-  }
-
-  // ────────────── Game Records ──────────────
-  Future<void> saveGameRecord({
-    required String gameType, // memory_flip, stroop, puzzle
-    required int score,
-    int? seconds,
-    int? level,
-  }) async {
-    await _dio.post('/games/$gameType/records', data: {
-      'score': score,
-      'seconds': seconds,
-      'level': level,
-      'completed_at': DateTime.now().toUtc().toIso8601String(),
-    });
-  }
-
-  Future<List<dynamic>> getGameHistory(
-      String gameType, {
-        int limit = 20,
-        String sort = 'desc',
-      }) async {
-    final response = await _dio.get(
-      '/games/$gameType/records',
-      queryParameters: {'limit': limit, 'sort': sort},
-    );
-    return response.data as List<dynamic>;
-  }
-}
-*/

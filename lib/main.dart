@@ -360,10 +360,11 @@ class _MainPageState extends State<MainPage> {
           crossAxisSpacing: 20,
           mainAxisSpacing: 20,
           children: [
-            _buildGameButton('記憶翻牌', 'assets/image/a.jpg', const GameLevelPage()),
-            _buildGameButton('益智拼圖', 'assets/image/a.jpg', const PuzzleGamePage()),
-            _buildGameButton('看字選色', 'assets/image/a.jpg', const Game2Page()),
-            // _buildGameButton('遊戲回顧', 'assets/image/a.jpg', const GameReviewPage()),
+           _buildGameButton('記憶翻牌', 'assets/image/game1.png', const GameLevelPage()),
+            _buildGameButton('益智拼圖', 'assets/image/game2.png', const PuzzleGamePage()),
+            _buildGameButton('看字選色', 'assets/image/game3.jpg', const Game2Page()),
+            _buildGameButton('遊戲回顧', 'assets/image/review.png', const GameReviewPage()),
+
           ],
         ),
       ),

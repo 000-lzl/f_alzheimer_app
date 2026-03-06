@@ -3,6 +3,7 @@ import 'dart:async'; // 因為使用了 Timer
 import 'dart:math';// 因為使用了Random()
 import 'dart:ui' as ui;//拼圖遊戲
 import 'package:flutter/services.dart';//拼圖遊戲
+import 'api.dart';
 
 
 // =======================
@@ -174,6 +175,20 @@ class _GameLevelPageState extends State<GameLevelPage> {
 
 
   void _showFinalDialog() {
+
+    /*ApiService().saveGameRecord(
+      gameType: 'flip',
+      score: seconds,        // 用完成時間作為 score（越低越好）
+      seconds: seconds,
+      level: level,          // 可選：傳關卡數
+    ).catchError((e) {
+      print('儲存翻牌紀錄失敗：$e');
+      // 可選：顯示提示
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('儲存紀錄失敗')),
+      );
+    });*/
+
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -425,6 +440,18 @@ class _Game2PageState extends State<Game2Page> {
   }
 
   void showGameOverDialog() {
+
+    /*ApiService().getGameHistory(
+      gameType: 'color',
+      score: score,          // 用答對題數作為 score（越高越好）
+      seconds: 30 - _timeLeft,
+    ).catchError((e) {
+      print('儲存看字選色紀錄失敗：$e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('儲存紀錄失敗')),
+      );
+    });*/
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -819,12 +846,24 @@ class _PuzzleGamePageState extends State<PuzzleGamePage> {
   }// 檢查是否完成
 
   void _showWinDialog() {
+
+    /*ApiService().saveGameRecord(
+      gameType: 'puzzle',
+      score: level,          // 用完成關卡數作為 score（越高越好）
+      level: level,
+    ).catchError((e) {
+      print('儲存拼圖紀錄失敗：$e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('儲存紀錄失敗')),
+      );
+    });*/
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
-        title: const Text("Level Completed! 🎉"),
-        content: const Text("Great job! Ready for the next challenge?"),
+        title: const Text("成功! 🎉"),
+        content: const Text("好棒！準備好迎接下一關了嗎？"),
         actions: [
           TextButton(
             onPressed: () {
@@ -835,7 +874,7 @@ class _PuzzleGamePageState extends State<PuzzleGamePage> {
               });
               _startLevel();
             },
-            child: const Text("Next Level"),
+            child: const Text("下一關"),
           ),
         ],
       ),
@@ -854,7 +893,7 @@ class _PuzzleGamePageState extends State<PuzzleGamePage> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Text("Level $level", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: Text("第 $level 關", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
