@@ -8,7 +8,7 @@ import 'login_page.dart';//登入
 import 'healthedu_page.dart';//衛教宣導
 import 'profile_page.dart';//註冊
 import 'api.dart';
-
+final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 /*
 void main() {
   runApp(const MyApp());
@@ -200,17 +200,18 @@ class _MainPageState extends State<MainPage> {
 
 
 }//所有頁面UI*/
-void main() async {
+/*void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 初始化 ApiService（可選擇在這裡檢查 token 是否存在）
-  final api = ApiService();
+  //final api = ApiService();
 
   // 可選：檢查是否有 token，預先設定（非同步，但不 await）
   // final token = await _loadToken();
   // if (token != null) api.setToken(token);
 
-  runApp(MyApp(apiService: api));
+  //runApp(MyApp(apiService: api));
+
 }
 
 class MyApp extends StatelessWidget {
@@ -238,11 +239,60 @@ class MyApp extends StatelessWidget {
       },
     );
   }
+}*/
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+
+  const MyApp({super.key});
+
+  /*@override
+  Widget build(BuildContext context) {
+
+    /*return const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: LoginPage(),
+    );*/
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: LoginPage(
+        onLoginSuccess: (account) {
+          print(account);
+        },
+      ),
+    );
+
+  }
+}*/
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      //navigatorObservers: [routeObserver],
+      debugShowCheckedModeBanner: false,
+      home: LoginPage(
+        onLoginSuccess: (user) {
+          //String account = user['account'];
+          // 這裡可以導航到主畫面，或使用全局狀態管理
+          print("登入成功：${user['account']}");
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => MainPage(initialUser: user),
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
 
 class MainPage extends StatefulWidget {
-  const MainPage({super.key});
+  //const MainPage({super.key});
+  final Map<String, dynamic>? initialUser;
 
+  const MainPage({super.key, this.initialUser});
   @override
   State<MainPage> createState() => _MainPageState();
 }
@@ -255,11 +305,21 @@ class _MainPageState extends State<MainPage> {
 
   // 可選：如果想顯示使用者名稱在 AppBar，可存這裡
   String? _userName;
+  String? _account;
   Map<String, dynamic>? currentUser;
 
   @override
   void initState() {
     super.initState();
+    if (widget.initialUser != null) {
+      setState(() {
+        _isLoggedIn = true;
+        _userName = widget.initialUser!['name'] as String?;
+        _account = widget.initialUser!['account'] as String?;
+        currentUser = widget.initialUser;
+        _selectedIndex = 0;  // 或 4
+      });
+    }
     _checkLoginStatus();
   }
 
@@ -272,7 +332,7 @@ class _MainPageState extends State<MainPage> {
     // 暫時用 ApiService 內部的 token 判斷（如果有攔截器，會自動帶）
     // 但更準確的方式是嘗試呼叫 /users/me，看是否成功
     try {
-      final profile = await ApiService().getProfile();
+      final profile = await ApiService().getProfile(_account!);
       setState(() {
         _isLoggedIn = true;
         _userName = profile['name'] as String?;
@@ -289,27 +349,31 @@ class _MainPageState extends State<MainPage> {
       if (_isLoggedIn) {
         // 已登入 → 直接切換到會員中心 tab，顯示 ProfilePage
         setState(() => _selectedIndex = 4);
-      } else {
+      } else{
         // 未登入 → 推登入頁
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => LoginPage(
-              onLoginSuccess: (user) {
-                print('登入成功回調執行！user = $user');
-
+              onLoginSuccess: (user) async {
+                //print('登入成功回調執行！user = $user');
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('currentAccount', user['account']);
                 setState(() {
                   _isLoggedIn = true;
                   _userName = user['name'] as String?;
+                  _account = user['account'] as String?;   // ← 這裡接收 account
                   currentUser = user;  // 如果你有這個變數就更新
+                  _selectedIndex = 4;
                 });
 
                 // 登入成功後：留在會員中心（顯示 ProfilePage）
                 // 如果你想登入後跳回首頁，就改成 _selectedIndex = 0;
-                setState(() => _selectedIndex = 4);
+                //setState(() => _selectedIndex = 4);
 
                 // 關閉登入頁，讓使用者回到主畫面
                 Navigator.pop(context);
+                //Navigator.pop(loginContext);
               },
             ),
           ),
@@ -317,23 +381,45 @@ class _MainPageState extends State<MainPage> {
         return;
       }
     }
-
     setState(() => _selectedIndex = index);
   }
 
   Widget _buildBody() {
     if (_selectedIndex == 4) {
+      if (currentUser != null) {
+        // 已登入 → 顯示 ProfilePage
       // 個人資料頁（已登入狀態）
       return ProfilePage(
+        key: ValueKey(_account),
+        account: _account!,
+        //routeObserver: routeObserver,
         onLogout: () {
           setState(() {
             _isLoggedIn = false;
             _userName = null;
+            _account = null;
+            currentUser = null;
             _selectedIndex = 0; // 登出後跳回首頁
           });
           // ProfilePage 內部已處理 token 清除，這裡只更新 UI 狀態
         },
       );
+    }else {
+        // 未登入 → 顯示 LoginPage
+        return LoginPage(
+          showRegister: true,
+          onLoginSuccess: (user) {
+            setState(() {
+              currentUser = user;
+              _isLoggedIn = true;
+              _account = user['account']?.toString();
+              _userName = user['name']?.toString();
+              currentUser = user;
+              _selectedIndex = 4; // 登入後停留在個人資料頁
+            });
+          },
+        );
+      }
     }
 
     // 其他頁面用 IndexedStack 保持狀態
@@ -360,18 +446,25 @@ class _MainPageState extends State<MainPage> {
           crossAxisSpacing: 20,
           mainAxisSpacing: 20,
           children: [
-           _buildGameButton('記憶翻牌', 'assets/image/game1.png', const GameLevelPage()),
+           /*_buildGameButton('記憶翻牌', 'assets/image/game1.png', const GameLevelPage()),
             _buildGameButton('益智拼圖', 'assets/image/game2.png', const PuzzleGamePage()),
-            _buildGameButton('看字選色', 'assets/image/game3.jpg', const Game2Page()),
-            _buildGameButton('遊戲回顧', 'assets/image/review.png', const GameReviewPage()),
-
+            _buildGameButton('看字選色', 'assets/image/game3.jpg', const Game2Page()),*/
+            /*_buildGameButton('記憶翻牌', 'assets/image/game1.png', GameLevelPage(account: account),),
+            _buildGameButton('益智拼圖', 'assets/image/game2.png', PuzzleGamePage(account: account),),
+            _buildGameButton('看字選色', 'assets/image/game3.jpg', Game2Page(account: account),),*/
+            _buildGameButton('記憶翻牌', 'assets/image/game1.png', (acc) => GameLevelPage(account: acc)),
+            _buildGameButton('益智拼圖', 'assets/image/game2.png', (acc) => PuzzleGamePage(account: acc)),
+            _buildGameButton('看字選色', 'assets/image/game3.jpg', (acc) => Game2Page(account: acc)),
+            //_buildGameButton('遊戲回顧', 'assets/image/review.png', const GameReviewPage()),
+            //_buildGameButton('遊戲回顧', 'assets/image/review.png', GameReviewPage(account: _account ?? '訪客')),
+            _buildGameButton('遊戲回顧', 'assets/image/review.png', (acc) => GameReviewPage(account: acc)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildGameButton(String title, String imagePath, Widget page) {
+  Widget _buildGameButton(String title, String imagePath, Widget Function(String) pageBuilder) {
     return ElevatedButton(
       onPressed: () {
         if (!_isLoggedIn) {
@@ -380,7 +473,11 @@ class _MainPageState extends State<MainPage> {
           );
           return;
         }
-        Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+        //Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => pageBuilder(_account ?? '訪客')), // ✅傳入 account
+        );
       },
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.grey,

@@ -2,16 +2,42 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../api.dart';
 
-class GameReviewPage extends StatefulWidget {
-  const GameReviewPage({super.key});
+/*class _GameReviewPageState extends State<GameReviewPage> {
+  final ApiService _api = ApiService(useMock: true); // 改成 false 時連真實後端
+  bool isLoading = true;
 
+  List<Map<String, dynamic>> flipHistory = [];   // 翻牌：{'seconds': 時間, 'playedAt': '日期'}
+  List<Map<String, dynamic>> colorHistory = [];  // 看字：{'score': 題數, 'playedAt': '日期'}
+  List<Map<String, dynamic>> puzzleHistory = []; // 拼圖：{'level': 關卡, 'playedAt': '日期'}
+*/
+/*class HomePageReview extends StatefulWidget {
+
+  final String account;
+
+  const HomePageReview({
+    super.key,
+    required this.account,
+  });*/
+  class GameReviewPage extends StatefulWidget {
+
+  final String account;
+
+  const GameReviewPage({
+  super.key,
+  required this.account,
+  });
   @override
   State<GameReviewPage> createState() => _GameReviewPageState();
 }
 
+
 class _GameReviewPageState extends State<GameReviewPage> {
-  final ApiService _api = ApiService(useMock: true); // 改成 false 時連真實後端
+  final ApiService _api = ApiService(useMock: false); // 改成 false 時連真實後端
   bool isLoading = true;
+
+  //final String account;
+
+  //const GameReviewPage({super.key, required this.account,});
 
   List<Map<String, dynamic>> flipHistory = [];   // 翻牌：{'seconds': 時間, 'playedAt': '日期'}
   List<Map<String, dynamic>> colorHistory = [];  // 看字：{'score': 題數, 'playedAt': '日期'}
@@ -27,23 +53,30 @@ class _GameReviewPageState extends State<GameReviewPage> {
     setState(() => isLoading = true);
 
     try {
-      flipHistory = await _api.getGameHistory('flip');
+      /*flipHistory = await _api.getGameHistory('flip');
       colorHistory = await _api.getGameHistory('color');
-      puzzleHistory = await _api.getGameHistory('puzzle');
+      puzzleHistory = await _api.getGameHistory('puzzle');*/
+      flipHistory = await _api.getGameHistory(widget.account, 'flip');
+      colorHistory = await _api.getGameHistory(widget.account, 'color');
+      puzzleHistory = await _api.getGameHistory(widget.account, 'puzzle');
+
 
       // 排序：按時間由舊到新（方便折線圖）
       flipHistory.sort((a, b) => DateTime.parse(a['playedAt']).compareTo(DateTime.parse(b['playedAt'])));
       colorHistory.sort((a, b) => DateTime.parse(a['playedAt']).compareTo(DateTime.parse(b['playedAt'])));
       puzzleHistory.sort((a, b) => DateTime.parse(a['playedAt']).compareTo(DateTime.parse(b['playedAt'])));
+
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('載入失敗：$e'), backgroundColor: Colors.red),
       );
     }
-
-    if (mounted) {
+    setState(() {
+      isLoading = false;
+    });
+    /*if (mounted) {
       setState(() => isLoading = false);
-    }
+    }*/
   }
 
   Widget _buildTrendChart({
@@ -66,7 +99,8 @@ class _GameReviewPageState extends State<GameReviewPage> {
 
     final spots = records.asMap().entries.map((e) {
       final index = e.key.toDouble();
-      final value = (e.value[valueKey] ?? 0).toDouble();
+      //final value = (e.value[valueKey] ?? 0).toDouble();
+      final value = (e.value[valueKey] as num?)?.toDouble() ?? 0;
       return FlSpot(index, value);
     }).toList();
 
@@ -104,7 +138,8 @@ class _GameReviewPageState extends State<GameReviewPage> {
                   ),
                   borderData: FlBorderData(show: true),
                   minX: 0,
-                  maxX: (records.length - 1).toDouble(),
+                  //maxX: (records.length - 1).toDouble(),
+                  maxX: records.length <= 1 ? 1 : (records.length - 1).toDouble(),
                   minY: 0,
                   lineBarsData: [
                     LineChartBarData(
@@ -145,6 +180,7 @@ class _GameReviewPageState extends State<GameReviewPage> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _buildTrendChart(
                 title: '翻牌遊戲 - 完成時間趨勢',

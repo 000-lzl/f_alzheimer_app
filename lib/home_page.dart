@@ -5,13 +5,97 @@ import 'dart:ui' as ui;//拼圖遊戲
 import 'package:flutter/services.dart';//拼圖遊戲
 import 'api.dart';
 
+/*class HomePage extends StatelessWidget {
+  final String account;
+  //String account = "";
 
+  const HomePage({super.key, required this.account});
+  //const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+        appBar: AppBar(
+        title: Text('首頁'),
+    ),
+    body: Center(
+    child: Text('目前登入帳號: $account'),
+    ),
+    );
+  }
+}*/
+class HomePage extends StatelessWidget {
+  final String account;
+
+  //const HomePage({super.key});
+  const HomePage({super.key, required this.account});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('首頁'),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+
+            /*Text(
+              '目前登入帳號: $account',
+              style: const TextStyle(fontSize: 20),
+            ),*/
+
+            const SizedBox(height: 30),
+
+            ElevatedButton(
+              child: const Text("翻牌記憶遊戲"),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>  GameLevelPage(account: account),
+                  ),
+                );
+              },
+            ),
+
+            ElevatedButton(
+              child: const Text("看字選色"),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>  Game2Page(account: account),
+                  ),
+                );
+              },
+            ),
+
+            ElevatedButton(
+              child: const Text("拼圖遊戲"),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>  PuzzleGamePage(account: account),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 // =======================
 // 翻牌遊戲
 // =======================
 class GameLevelPage extends StatefulWidget {
-  const GameLevelPage({super.key});
-
+  final String account;
+  const GameLevelPage({super.key, required this.account});
+  ///const GameLevelPage({super.key});
   @override
   State<GameLevelPage> createState() => _GameLevelPageState();
 }
@@ -188,7 +272,13 @@ class _GameLevelPageState extends State<GameLevelPage> {
         SnackBar(content: Text('儲存紀錄失敗')),
       );
     });*/
-
+    ApiService().saveGameResult(
+      account: widget.account,
+      gameType: "flip",
+      score: seconds,
+      seconds: seconds,
+      level: level,
+    );
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -233,12 +323,12 @@ class _GameLevelPageState extends State<GameLevelPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("第 $level 關"),
+        title: Text("第 $level 關 - ${widget.account}"),
         actions: [
           Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text("⏱ $seconds 秒"),
+                child:  Text("⏱ $seconds 秒"),
               )),
         ],
       ),
@@ -313,7 +403,8 @@ class _GameLevelPageState extends State<GameLevelPage> {
 // 看字選色遊戲
 // =======================
 class Game2Page extends StatefulWidget {
-  const Game2Page({super.key});
+  final String account;
+  const Game2Page({super.key, required this.account});
   @override
   _Game2PageState createState() => _Game2PageState();
 }
@@ -451,7 +542,13 @@ class _Game2PageState extends State<Game2Page> {
         SnackBar(content: Text('儲存紀錄失敗')),
       );
     });*/
-
+    ApiService().saveGameResult(
+      account: widget.account,
+      gameType: "color",
+      score: score,
+      seconds: 30 - _timeLeft,
+      level: 1,
+    );
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -649,7 +746,8 @@ class _Game2PageState extends State<Game2Page> {
 // 拼圖遊戲
 // =======================
 class PuzzleGamePage extends StatefulWidget {
-  const PuzzleGamePage({super.key});
+  final String account;
+  const PuzzleGamePage({super.key, required this.account});
 
   @override
   State<PuzzleGamePage> createState() => _PuzzleGamePageState();
@@ -857,7 +955,13 @@ class _PuzzleGamePageState extends State<PuzzleGamePage> {
         SnackBar(content: Text('儲存紀錄失敗')),
       );
     });*/
-
+    ApiService().saveGameResult(
+      account: widget.account,
+      gameType: "puzzle",
+      score: level,
+      seconds: 0,
+      level: level,
+    );
     showDialog(
       context: context,
       barrierDismissible: false,

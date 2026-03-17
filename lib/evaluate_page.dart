@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert'; // 用來轉 JSON
 import 'package:http/http.dart' as http; // 用來發送請求
-
+import 'profile_page.dart';
 
 // =======================
 // 1. 資料模型 (儲存所有分數)
@@ -52,7 +52,7 @@ class AssessmentStartPage extends StatelessWidget {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const AssessmentFlowPage()),
+                  MaterialPageRoute(builder: (context) =>  AssessmentFlowPage(account: "")),
                 );
               },
               child: const Padding(
@@ -71,7 +71,14 @@ class AssessmentStartPage extends StatelessWidget {
 // 3. 問卷主流程 (PageView)
 // =======================
 class AssessmentFlowPage extends StatefulWidget {
-  const AssessmentFlowPage({super.key});
+  final String account;
+
+  const AssessmentFlowPage({
+    super.key,
+    required this.account,
+  });
+
+  //const AssessmentFlowPage({super.key});
 
   @override
   State<AssessmentFlowPage> createState() => _AssessmentFlowPageState();
@@ -120,13 +127,14 @@ class _AssessmentFlowPageState extends State<AssessmentFlowPage> {
 
     //API 指定要放在 "data" 裡面
     final Map<String, dynamic> requestBody = {
+      "account": widget.account,
       "data": requestData
     };
 
     try {
       // 3. 發送 API 請求
-      final Uri url = Uri.parse("http://himhealth.mcu.edu.tw:8048/v1/predict");
-
+      //final Uri url = Uri.parse("http://himhealth.mcu.edu.tw:8048/v1/predict_and_log");
+      final Uri url = Uri.parse("http://120.125.78.193:8048/v1/predict_and_log");
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
@@ -322,6 +330,7 @@ class _AssessmentFlowPageState extends State<AssessmentFlowPage> {
                 FunctionalAssessmentForm(
                   onSaved: (val) => _result.functionScore = val,
                   onSubmit: _submitResults, // 最後一份直接送出
+
                 ),
               ],
             ),
@@ -395,11 +404,12 @@ class _MemoryComplaintsFormState extends State<MemoryComplaintsForm> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 // 計分邏輯: 若勾選任一項(前4項) -> 1，若勾選以上皆無 -> 0
                 int score = checks.contains(true) ? 1 : 0;
                 widget.onSaved(score);
                 widget.onNext();
+                //Navigator.pop(context, true);
               },
               child: const Text("完成Memory Complaints評估 下一頁"),
             ),
@@ -573,7 +583,7 @@ class _ADLFormState extends State<ADLForm> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 // 檢查是否所有題目都已填寫
                 if (selectedScores.contains(null)) {
                   // 找出沒填的題目
@@ -590,6 +600,7 @@ class _ADLFormState extends State<ADLForm> {
                 int total = selectedScores.fold(0, (sum, item) => sum + (item ?? 0));
                 widget.onSaved(total);
                 widget.onNext();
+                //Navigator.pop(context, true);
               },
               style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 15),
@@ -658,10 +669,11 @@ class _SleepQualityFormState extends State<SleepQualityForm> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 if (selectedScore == null) return;
                 widget.onSaved(selectedScore!);
                 widget.onNext();
+                //Navigator.pop(context, true);
               },
               child: const Text("完成Sleep Quality評估 下一頁"),
             ),
@@ -883,10 +895,11 @@ class _MMSEFormState extends State<MMSEForm> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 int total = currentScores.reduce((a, b) => a + b);
                 widget.onSaved(total);
                 widget.onNext();
+                //Navigator.pop(context, true);
               },
               child: const Text("完成 MMSE 評估，下一頁"),
             ),
@@ -959,11 +972,12 @@ class _BehavioralProblemsFormState extends State<BehavioralProblemsForm> {
             width: double.infinity,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              onPressed: () {
+              onPressed: () async {
                 // 計分邏輯: 若勾選任一項(前4項) -> 1，以上皆無 -> 0
                 int score = checks.contains(true) ? 1 : 0;
                 widget.onSaved(score);
                 widget.onSubmit(); // 這是最後一份，觸發送出
+                //Navigator.pop(context, true);
               },
               child: const Text("送出評估結果", style: TextStyle(color: Colors.white)),
 
@@ -1092,9 +1106,35 @@ class _FunctionalAssessmentFormState extends State<FunctionalAssessmentForm> {
                   backgroundColor: Colors.green, // 綠色代表最後送出
                   padding: const EdgeInsets.symmetric(vertical: 15)
               ),
-              onPressed: () {
+              /*onPressed: () {
                 widget.onSaved(_currentValue.toInt());
                 widget.onSubmit(); // 觸發送出結果
+              },*/
+              onPressed: () async { // ← 改成 async
+                // 1️⃣ 先觸發本地保存或父頁回調
+                widget.onSaved(_currentValue.toInt());
+                widget.onSubmit(); // 觸發送出結果
+                Navigator.pop(context, true);
+
+                /*try {
+                  // 2️⃣ 呼叫後端做預測並存 log
+                  // 假設你有一個 Map<String, dynamic> userDataMap 存問卷結果
+                  await ApiService().predict(userDataMap, widget.account);
+
+                  // 3️⃣ 成功後刷新 ProfilePage 的預測結果
+                  await _loadPredictions();
+
+                  // 4️⃣ 可選：提示用戶已更新
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('問卷預測結果已更新')),
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('更新預測結果失敗: $e')),
+                  );
+                }*/
+                /*if (widget.onRefreshPredictions != null) {
+                await widget.onRefreshPredictions!();*/
               },
               child: const Text(
                   "送出評估結果",
@@ -1108,3 +1148,27 @@ class _FunctionalAssessmentFormState extends State<FunctionalAssessmentForm> {
   }//function
 
 }
+
+/*class EvaluatePage extends StatefulWidget {
+  final String account;
+  const EvaluatePage({super.key, required this.account});
+
+  @override
+  State<EvaluatePage> createState() => _EvaluatePageState();
+}
+
+class _EvaluatePageState extends State<EvaluatePage> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("問卷評估")),
+      body: Center(
+        /*child: ElevatedButton(
+          onPressed: () {
+            Navigator.pop(context, true); // 回傳 true
+          },
+        ),*/
+      ),
+    );
+  }
+}*/

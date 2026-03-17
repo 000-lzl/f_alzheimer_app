@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
+import 'evaluate_page.dart';
 
 class ProfilePage extends StatefulWidget {
+  final String account;
   final Function()? onLogout;
-
-  const ProfilePage({super.key, this.onLogout});
+  final Future<void> Function()? onRefreshPredictions;
+  //final RouteObserver<PageRoute>? routeObserver;
+  const ProfilePage({super.key, this.onLogout, required this.account,this.onRefreshPredictions,});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> {
+class _ProfilePageState extends State<ProfilePage> with RouteAware {
   // 移除原本的 userData 依賴，改用狀態變數
   String name = '';
   String account = '';
@@ -26,8 +29,58 @@ class _ProfilePageState extends State<ProfilePage> {
   void initState() {
     super.initState();
     _loadProfile();
+    _loadPredictions();
+  }
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    //routeObserver.subscribe(this, ModalRoute.of(context)! as PageRoute);
+    _refreshPredictions(); // 每次頁面顯示都刷新
+  }
+  @override
+  void dispose() {
+    //routeObserver.unsubscribe(this);
+    super.dispose();
   }
 
+  // 每次從其他頁面返回到 ProfilePage
+  @override
+  void didPopNext() {
+    _refreshPredictions();
+  }
+  /*@override
+  void didUpdateWidget(covariant ProfilePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.account != widget.account) {
+      // 帳號變了 → 重新抓資料
+      _loadProfile();
+      _loadPredictions();
+    }
+  }*/
+  //預測結果
+  List predictions = [];
+
+  /*Future<void> _loadPredictions() async {
+    final data = await ApiService().getPredictions(widget.account);
+
+    setState(() {
+      predictions = data;
+    });
+  }*/
+  Future<void> _loadPredictions() async {
+    try {
+      final data = await ApiService().getPredictions(widget.account);
+      if (!mounted) return;
+      setState(() {
+        predictions = data;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        predictions = [];
+      });
+    }
+  }
   Future<void> _loadProfile() async {
     setState(() {
       isLoading = true;
@@ -35,7 +88,7 @@ class _ProfilePageState extends State<ProfilePage> {
     });
 
     try {
-      final data = await ApiService().getProfile();
+      final data = await ApiService().getProfile(widget.account);
 
       setState(() {
         name = data['name'] as String? ?? '未知姓名';
@@ -55,6 +108,20 @@ class _ProfilePageState extends State<ProfilePage> {
       if (e.toString().contains('401') || e.toString().contains('Unauthorized')) {
         _logout();
       }
+    }
+  }
+  Future<void> _refreshPredictions() async {
+    try {
+      final latestPredictions = await ApiService().getPredictions(widget.account);
+      if (mounted) {
+        setState(() {
+          predictions = latestPredictions;
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('刷新預測結果失敗: $e')),
+      );
     }
   }
 
@@ -81,7 +148,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _logout() async {
     try {
       // 1. 清除 API 的 token
-      ApiService().setToken(null);
+      //ApiService().setToken(null);
 
       // 2. 清除本地儲存的 token（根據你實際使用的儲存方式）
       // 如果使用 flutter_secure_storage：
@@ -162,7 +229,82 @@ class _ProfilePageState extends State<ProfilePage> {
                 title: Text('BMI: ${bmi.toStringAsFixed(1)} ($bmiLevel)'),
               ),
             ),
+            /*Card(
+              child: ListTile(
+                title: Text(
+                  predictions.isNotEmpty
+                  ? "風險機率: ${(predictions[0]['probability'] * 100).toStringAsFixed(1)} %"
+                       : "尚無預測紀錄",
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ),
+            ),*/
+            Column(
+              children: predictions.isNotEmpty
+                  ? predictions.map((p) {
+                final prob = (p['probability'] * 100).toStringAsFixed(1);
+                return Card(
+                  child: ListTile(
+                    title: Text(
+                      "風險機率: $prob %",
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                );
+              }).toList()
+                  : [
+                const Card(
+                  child: ListTile(
+                    title: Text(
+                      "尚無預測紀錄",
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ),
+                )
+              ],
+            ),
+            /*ElevatedButton(
+              onPressed: () async {
+                // 跳轉到 EvaluatePage，等使用者完成後回來刷新
+                final shouldRefresh = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    //builder: (_) => EvaluatePage(account: account),
+                    builder: (_) => QuestionnairePage(account: account),
+                  ),
+                );
+
+                if (shouldRefresh == true) {
+                  // 回來後刷新預測結果
+                  await _loadPredictions();
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                minimumSize: const Size(double.infinity, 50),
+              ),
+              child: const Text(
+                '開始問卷評估',
+                style: TextStyle(fontSize: 18, color: Colors.white),
+              ),
+            ),*/
             const SizedBox(height: 30),
+            /*const Text(
+              "問卷預測結果",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 10),
+
+            ...predictions.map((p) {
+              return Card(
+                child: ListTile(
+                  title: Text(
+                    "風險機率: ${(p['probability'] * 100).toStringAsFixed(1)}%",
+                  ),
+                ),
+              );
+            }).toList(),*/
             ElevatedButton(
               onPressed: _logout,
               style: ElevatedButton.styleFrom(
