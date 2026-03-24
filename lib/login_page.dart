@@ -621,7 +621,7 @@ class _LoginPageState extends State<LoginPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('註冊失敗：$e')),
+        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''))),
       );
     } finally {
       if (mounted) {

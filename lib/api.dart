@@ -92,11 +92,24 @@ class ApiService {
       },
     );
 
-    return Map<String, dynamic>.from(response.data);}
+    /*return Map<String, dynamic>.from(response.data);}
     on DioException catch (e) {
       //print('登入失敗：${e.response?.statusCode} - ${e.response?.data}');
       print("登入錯誤完整訊息 = $e");
       rethrow;
+    }*/
+      return Map<String, dynamic>.from(response.data);
+
+    } on DioException catch (e) {
+      print("登入錯誤完整訊息 = $e");
+
+      // ✅ 如果是帳密錯誤（常見 400 / 401）
+      if (e.response?.statusCode == 400 || e.response?.statusCode == 401) {
+        throw Exception('請輸入正確的帳號密碼');
+      }
+
+      // ✅ 其他錯誤（像斷線）
+      throw Exception('登入失敗，請稍後再試');
     }
   }
 
@@ -121,6 +134,15 @@ class ApiService {
       };
     }
 
+    // ✅ ===== 前端防呆 =====
+    if (height < 140 || height > 200) {
+      throw Exception('請輸入正確身高');
+    }
+
+    if (weight < 30 || weight > 150) {
+      throw Exception('請輸入正確體重');
+    }
+
     try {
       print('【REGISTER】準備發送請求到：$baseUrl/auth/register');
       print('送出資料：account=$account, name=$name, birthday=$birthday, height=$height, weight=$weight');
@@ -140,7 +162,33 @@ class ApiService {
 
       //final data = response.data as Map<String, dynamic>;
       final data = Map<String, dynamic>.from(response.data);
-      // 失敗時手動丟錯誤
+      // ✅ ===== 客製化錯誤訊息 =====
+      if (response.statusCode != 200) {
+        if (data['detail'] != null && data['detail'] is List) {
+          final detail = data['detail'][0];
+
+          if (detail['loc'].toString().contains('height')) {
+            throw Exception('身高格式錯誤（需 ≤ 250）');
+          } else if (detail['loc'].toString().contains('weight')) {
+            throw Exception('體重格式錯誤');
+          }
+        }
+
+        throw Exception('註冊失敗，請確認輸入資料');
+      }
+
+      if (!data.containsKey('account')) {
+        data['account'] = account;
+      }
+
+      return data;
+
+    } on DioException catch (e) {
+      print('註冊失敗：${e.response?.statusCode} - ${e.response?.data}');
+      throw Exception('網路錯誤，請稍後再試');
+    }
+  }
+      /*// 失敗時手動丟錯誤
       if (response.statusCode != 200) {
         throw Exception('後端回傳錯誤：${data['detail'] ?? response.statusCode}');
       }
@@ -164,7 +212,7 @@ class ApiService {
       }
       rethrow;
     }
-  }
+  }*/
 
   // 取得個人資料：改成 POST /users/me（後端是 POST！）
   Future<Map<String, dynamic>> getProfile(String account) async {

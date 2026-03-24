@@ -239,7 +239,7 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
                 ),
               ),
             ),*/
-            Column(
+            /*Column(
               children: predictions.isNotEmpty
                   ? predictions.map((p) {
                 final prob = (p['probability'] * 100).toStringAsFixed(1);
@@ -262,7 +262,7 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
                   ),
                 )
               ],
-            ),
+            ),*/
             /*ElevatedButton(
               onPressed: () async {
                 // 跳轉到 EvaluatePage，等使用者完成後回來刷新
